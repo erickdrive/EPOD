@@ -15,6 +15,11 @@ typedef struct{
 	int tam;
 }Lista;
 
+typedef struct {
+    unsigned int codigo;
+    unsigned int tamanho;
+} Codigo;
+
 void inicializa_tabela(unsigned int tab[]){
 	int i;
 	for(i = 0; i<TAM; i++)
@@ -34,7 +39,7 @@ void preencher_tab_freq(unsigned char texto[], unsigned int tab[]){
 void imprime_tam_freq(unsigned int tab[]){
 	int i;
 	
-	printf("\tTabela de Frequência\n");
+	printf("\tTabela de Frequencia\n");
 	for(i = 0; i < TAM;i++){
 		if(tab[i] > 0)
 			printf("\t%d = %u = %c\n",i,tab[i],i);
@@ -88,9 +93,9 @@ void preencher_lista(unsigned int tab[], Lista *lista){
 void imprimir_lista(Lista *lista){
 	No *aux = lista->inicio;
 	
-	printf("\nLista Ordenada: Tamanho: %d\n",lista->tam);
+	printf("\n Lista Ordenada: Tamanho: %d\n",lista->tam);
 	while(aux){
-		printf("\nCaractere: %c Frequencia: %d\n", aux->caractere, aux->frequencia);
+		printf("\n Caractere: %c Frequencia: %d", aux->caractere, aux->frequencia);
 		aux = aux->proximo;
 	}
 }
@@ -122,7 +127,7 @@ No* montar_arvore(Lista *lista){
 			novo->proximo = NULL;
 			inserir_ordenado(lista, novo);
 		}else{
-			printf("\nErro ao alocar memória.\n");
+			printf("\nErro ao alocar memoria.\n");
 			break;
 		}
 	}
@@ -183,15 +188,91 @@ void gerar_dicionario(char **dicionario, No *raiz, char *caminho, int colunas){
 	}	
 }
 
+void gerar_dicionario_bits(Codigo dicionario[], No *raiz, unsigned int codigo, unsigned int tamanho) {
+    if(raiz->esq == NULL && raiz->dir == NULL) {
+        dicionario[raiz->caractere].codigo = codigo;
+        dicionario[raiz->caractere].tamanho = tamanho;
+    } else {
+        gerar_dicionario_bits(dicionario, raiz->esq, codigo << 1, tamanho + 1);
+        gerar_dicionario_bits(dicionario, raiz->dir, (codigo << 1) | 1, tamanho + 1);
+    }
+}
+
+void imprimir_dicionario(Codigo dicionario[]) {
+	int i,j;
+    printf("\n\tDicionario:\n");
+    for(i = 0; i < TAM; i++) {
+        if(dicionario[i].tamanho > 0) {
+            printf("\t%3d: ", i);
+            for(j = dicionario[i].tamanho - 1; j >= 0; j--) {
+                printf("%d", (dicionario[i].codigo >> j) & 1);
+            }
+            printf("\n");
+        }
+    }
+}
+
+unsigned char* codificar_bits(Codigo dicionario[], unsigned char *texto, int *tam_bytes) {
+    int i = 0, bit_pos = 0;
+    int capacidade = 256;
+    int j;
+    unsigned char *saida = calloc(capacidade, sizeof(unsigned char));
+
+    while(texto[i] != '\0') {
+        unsigned int codigo = dicionario[texto[i]].codigo;
+        unsigned int tamanho = dicionario[texto[i]].tamanho;
+
+        for( j = tamanho - 1; j >= 0; j--) {
+            if(bit_pos / 8 >= capacidade) {
+                capacidade *= 2;
+                saida = realloc(saida, capacidade);
+            }
+            if((codigo >> j) & 1)
+                saida[bit_pos / 8] |= (1 << (7 - (bit_pos % 8)));
+            bit_pos++;
+        }
+
+        i++;
+    }
+
+    *tam_bytes = (bit_pos + 7) / 8;
+    return saida;
+}
+
+char* decodificar_bits(unsigned char *texto, int tam_bytes, No *raiz) {
+    No *aux = raiz;
+    char *saida = calloc(1024, sizeof(char)); 
+    int saida_pos = 0, i;
+    int total_bits = tam_bytes * 8;
+
+    for(i = 0; i < total_bits; i++) {
+        int byte = i / 8;
+        int bit = 7 - (i % 8);
+        int bit_atual = (texto[byte] >> bit) & 1;
+
+        aux = (bit_atual == 0) ? aux->esq : aux->dir;
+
+        if(aux->esq == NULL && aux->dir == NULL) {
+            saida[saida_pos++] = aux->caractere;
+            aux = raiz;
+        }
+    }
+    saida[saida_pos] = '\0';
+    return saida;
+}
+
 
 int main(void){
+	int i;
 	unsigned char texto[] = "Vamos aprender a programar";
 	unsigned int tab_freq[TAM];
 	Lista lista;
 	No *arvore;
 	int colunas;
-	char **dicionario;
-	char *codificado, *decodificado;
+	Codigo dicionario[TAM] = {0};
+	unsigned char *codificado;
+	char *decodificado;
+	int tam_bytes;
 	setlocale(LC_ALL,"Portuguese");
 	
 	inicializa_tabela(tab_freq);
@@ -203,7 +284,24 @@ int main(void){
 	imprimir_lista(&lista);
 	
 	arvore = montar_arvore(&lista);
-	printf("\n\tArvore de Huffman\n");
+	printf("\n\n\t    Arvore de Huffman\n");
 	imprimir_arvore(arvore, 0);
+	
+	gerar_dicionario_bits(dicionario, arvore, 0, 0);
+    imprimir_dicionario(dicionario);
+
+    codificado = codificar_bits(dicionario, texto, &tam_bytes);
+    printf("\n Texto codificado em bits (%d bytes):\n", tam_bytes);
+    for( i = 0; i < tam_bytes; i++)
+        printf(" %02X ", codificado[i]);
+    printf("\n");
+
+    decodificado = decodificar_bits(codificado, tam_bytes, arvore);
+    printf("\n Texto decodificado: %s\n", decodificado);
+
+    
+    free(codificado);
+    free(decodificado);
+    return 0;
 	
 }
